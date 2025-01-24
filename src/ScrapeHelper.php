@@ -8,7 +8,13 @@ use GuzzleHttp\Client;
 use Symfony\Component\DomCrawler\Crawler;
 
 class ScrapeHelper
-{
+{    
+    /**
+     * fetchDocument
+     *
+     * @param  mixed $url
+     * @return Crawler
+     */
     public static function fetchDocument(string $url): Crawler
     {
         $client = new Client();
@@ -19,7 +25,7 @@ class ScrapeHelper
         } catch(Exception $e)
         {
             //we can also do error_log to log the errors in file
-            die("An error occurred while processing the URL: ".$url);
+            die("An error occurred while processing the URL: ".$url.", Error: ".$e->getMessage());
         }
     }
 
@@ -62,8 +68,6 @@ class ScrapeHelper
 
         return "";
     }
-
-
 
     /**
      * getCapacity
@@ -110,39 +114,49 @@ class ScrapeHelper
      * @param  mixed $document
      * @return array
      */
-    public static function fetchProducts($document): array
+    public static function fetchProducts($document, $productArr=[]): array
     {
-        $result = [];
+        $result = $productArr;
         $document->filter("div > .flex-wrap > .product")->each(function ($product_div) use (&$result) {
+            $title = $product_div->filter('h3')->text();
+            
+            //if product title is not available then continue to next product
+            if(trim($title) == '') return;
 
             $avilable = explode(": ", $product_div->filter('.my-4.text-sm')->first()->text());
+            $availability = isset($avilable[1]) ? trim($avilable[1]) : "Out of Stock";
+
             $colors = $product_div->filter('.px-2 > span')->each(function ($item) {
                 return $item->attr("data-colour");
             });
-
-            foreach ($colors as $value) {
+            
+            foreach ($colors as $color) {
                 
-                $title = $product_div->filter('h3')->text();
-                
-                //if product title is not available then continue to next product
-                if(trim($title) == '') continue;
-
-                $product["title"] = $title;
-                $product["price"] = self::cleanPrice($product_div->filter('.my-8.text-center')->text());
-
-                $product["imageUrl"] = self::cleanURL($product_div->filter('img')->attr("src"));
-                $product["capacityMB"] = self::getCapacity($product_div->filter('h3 > .product-capacity')->text());
-                $product["colour"] = $value;
-                $product["availabilityText"] = isset($avilable[1]) ? trim($avilable[1]) : "Out of Stock";
-                $product["isAvailable"] = (isset($avilable[1]) && trim($avilable[1]) == "Out of Stock") ? false : true;
-
-                $product["shippingDate"] = $product["shippingText"] = '';
-                if ($product_div->filter('.my-4.text-sm')->count() > 1) {
-                    $product["shippingText"] = $product_div->filter('.my-4.text-sm')->last()->text();
-                    $product["shippingDate"] = self::getFormatedDate($product_div->filter('.my-4.text-sm')->last()->text());
+                //check product with title and color as key if already exists then go to the next product
+                if(isset($result[$title."_".$color])) {
+                    continue;
                 }
 
-                $result[] = $product;
+                $product = [
+                    "title" => $title,
+                    "price" => self::cleanPrice($product_div->filter('.my-8.text-center')->text()),
+                    "imageUrl" => self::cleanURL($product_div->filter('img')->attr("src")),
+                    "capacityMB" => self::getCapacity($product_div->filter('h3 > .product-capacity')->text()),
+                    "colour" => $color,
+                    "availabilityText" => $availability,
+                    "isAvailable" => $availability !== "Out of Stock",
+                    "shippingText" => '',
+                    "shippingDate" => ''
+                ];
+
+                if ($product_div->filter('.my-4.text-sm')->count() > 1) {
+                    $shippingText = $product_div->filter('.my-4.text-sm')->last()->text();
+                    $product["shippingText"] = $shippingText;
+                    $product["shippingDate"] = self::getFormatedDate($shippingText);
+                }
+
+                //Add product to the result
+                $result[$title."_".$color] = $product;
             }
         });
         return $result;
