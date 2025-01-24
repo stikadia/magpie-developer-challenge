@@ -32,7 +32,7 @@ class Scrape
             }
         }
         
-        $this->products = $finalProducts;
+        $this->products = array_values($finalProducts);
         
         file_put_contents('output.json', json_encode($this->products,true));
     }
